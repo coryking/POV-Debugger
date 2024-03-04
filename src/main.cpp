@@ -7,7 +7,9 @@
 #include "FS.h"
 #include "SPIFFS.h"
 #include "esp_log.h"
-#include "hall_effect_isr.h"
+#include "types.h"
+#include "config.h"
+#include "xtensa/core-macros.h"
 #include <string.h>
 
 // Typedefs for clarity
@@ -15,8 +17,24 @@ typedef uint64_t delta_t;
 typedef uint64_t timestamp_t;
 
 // Define globally in one of your C files
-volatile uint32_t IRAM_ATTR globalCycleCountStorage = 0;
-volatile TriggerState IRAM_ATTR globalTriggerState = TriggerState::FALSE; // Use appropriate type or enum
+volatile uint32_t IRAM_ATTR lastCycleCount = 0;
+volatile TriggerState IRAM_ATTR lastEdgeTrigger = TriggerState::FALSE; // Use appropriate type or enum
+
+// ISR Handler
+static void IRAM_ATTR hallEffectISR(void *arg)
+{
+    auto gpioState = gpio_get_level(HALL_PIN);
+    lastCycleCount = XTHAL_GET_CCOUNT(); // Get cycle count for timestamp
+
+    if (gpioState == 1)
+    { // Check if the interrupt was due to a rising edge
+        lastEdgeTrigger = TriggerState::RISE;
+    }
+    else
+    { // Otherwise, it's a falling edge
+        lastEdgeTrigger = TriggerState::FALL;
+    }
+}
 
 void writeInterrupt(uint64_t timestamp, TriggerState pinState)
 {
@@ -69,7 +87,7 @@ void setupInterrupt()
     ESP_ERROR_CHECK(gpio_install_isr_service(ESP_INTR_FLAG_LEVEL3));
 
     // Attach the ISR handler for the hall effect sensor
-    ESP_ERROR_CHECK(gpio_isr_handler_add(HALL_PIN, hall_effect_isr, nullptr));
+    ESP_ERROR_CHECK(gpio_isr_handler_add(HALL_PIN, hallEffectISR, nullptr));
 }
 
 void setup()
@@ -90,11 +108,11 @@ void setup()
 
 void loop()
 {
-    if (globalTriggerState != TriggerState::FALSE)
+    if (lastEdgeTrigger != TriggerState::FALSE)
     {
-        timestamp_t microsecs = CYCLES_TO_MICROSECONDS(globalCycleCountStorage);
-        writeInterrupt(microsecs,globalTriggerState);
-        globalTriggerState = TriggerState::FALSE;
+        timestamp_t microsecs = CYCLES_TO_MICROSECONDS(lastCycleCount);
+        writeInterrupt(microsecs,lastEdgeTrigger);
+        lastEdgeTrigger = TriggerState::FALSE;
     }
     delay(1);
 }

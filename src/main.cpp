@@ -10,7 +10,8 @@
 #include "esp_log.h"
 #include "types.h"
 #include <FS.h>
-#include <LittleFS.h>
+// #include <LittleFS.h>
+#include <SPIFFS.h>
 #include <string.h>
 #include <vector>
 
@@ -44,7 +45,7 @@ void writeIsrEvt(File *file, ISRData isrData)
 }
 void fileMonitorTask(void *pvParameters)
 {
-    File file = LittleFS.open("/data.csv", FILE_APPEND);
+    File file = SPIFFS.open("/data.csv", FILE_APPEND);
     file.println("timestamp(us),writeTimestamp(us),pinState,isrCallCount");
     ISRData isrData;
     while (true)
@@ -78,7 +79,9 @@ void fileMonitorTask(void *pvParameters)
 
 void dumpAndEraseData()
 {
-    File file = LittleFS.open("/data.csv");
+    File file = SPIFFS.open("/data.csv", FILE_READ);
+
+    // File file = LittleFS.open("/data.csv");
     if (!file)
     {
         Serial.println("Failed to open file for reading");
@@ -93,7 +96,7 @@ void dumpAndEraseData()
     file.close();
 
     // Erase the data by simply removing the file
-    LittleFS.remove("/data.csv");
+    SPIFFS.remove("/data.csv");
 }
 
 void setupInterrupt()
@@ -124,7 +127,7 @@ void setup()
     delay(4000); // give us time to plug in monitoring
     // Initialize LittleFS /
 
-    if (!LittleFS.begin(false))
+    if (!SPIFFS.begin(false))
     {
         Serial.println("An Error has occurred while mounting LittleFS");
         return;
@@ -135,7 +138,9 @@ void setup()
     Serial.println("All done with D&E");
     _fileMon = xQueueCreate(40, sizeof(ISRData));
     xTaskCreate(&fileMonitorTask, "FileWriter", RTOS::LARGE_STACK_SIZE, nullptr, RTOS::HIGH_PRIORITY, &_fileTask);
+    Serial.println("Task created");
     setupInterrupt();
+    Serial.println("Interrupt setup");
 }
 
 void loop()

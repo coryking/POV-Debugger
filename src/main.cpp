@@ -38,22 +38,23 @@ static void IRAM_ATTR hallEffectISR(void *arg)
         portYIELD_FROM_ISR();
     }
 }
-void writeIsrEvt(File *file, ISRData isrData)
+void writeIsrEvt(File *file, ISRData isrData, bool interpolated)
 {
-    file->printf("%llu,%llu,%d,%lu\n", isrData.timestamp, esp_timer_get_time(), isrData.state, isrData.isrCallCount);
+    file->printf("%llu,%llu,%d,%lu,%d\n", isrData.timestamp, esp_timer_get_time(), isrData.state, isrData.isrCallCount,
+                 interpolated);
 }
 void fileMonitorTask(void *pvParameters)
 {
     File file = LittleFS.open("/data.csv", FILE_APPEND, true);
-    file.println("timestamp(us),writeTimestamp(us),pinState,isrCallCount");
+    file.println("timestamp(us),writeTimestamp(us),pinState,isrCallCount,interpolated");
 
     ISRData isrData, lastIsrData;
     bool firstEvent = true;
     while (true)
     {
-        if (xQueueReceive(_fileMon, &isrData, pdMS_TO_TICKS(5)) == pdPASS)
+        if (xQueueReceive(_fileMon, &isrData, portMAX_DELAY) == pdPASS)
         {
-            /*if (!firstEvent && isrData.state == lastIsrData.state)
+            if (!firstEvent && isrData.state == lastIsrData.state)
             {
                 // Detected a missing event; interpolate it.
                 ISRData interpolatedData;
@@ -62,21 +63,21 @@ void fileMonitorTask(void *pvParameters)
                 // Split the delta between the current and last timestamp
                 interpolatedData.timestamp = lastIsrData.timestamp + (isrData.timestamp - lastIsrData.timestamp) / 2;
                 // isrCallCount for the interpolated event could be set to a special value or interpolated as well
-                interpolatedData.isrCallCount = lastIsrData.isrCallCount; // Simple interpolation
+                interpolatedData.isrCallCount = 0; // lastIsrData.isrCallCount; // Simple interpolation
                 // Log the interpolated event
-                writeIsrEvt(&file, interpolatedData);
-            }*/
+                writeIsrEvt(&file, interpolatedData, true);
+            }
 
             // Process and log the current event
-            // if (!firstEvent || isrData.state != lastIsrData.state)
-            //{
-            writeIsrEvt(&file, isrData);
-            //}
+            if (!firstEvent || isrData.state != lastIsrData.state)
+            {
+                writeIsrEvt(&file, isrData, false);
+            }
 
-            // lastIsrData = isrData;
-            // firstEvent = false;
+            lastIsrData = isrData;
+            firstEvent = false;
         }
-        file.flush();
+        // file.flush();
     }
     file.close();
 }

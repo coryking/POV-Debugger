@@ -38,23 +38,20 @@ static void IRAM_ATTR hallEffectISR(void *arg)
         portYIELD_FROM_ISR();
     }
 }
-void writeIsrEvt(File *file, ISRData isrData, bool interpolated)
+void writeIsrEvt(File *file, ISRData isrData)
 {
-    file->printf("%llu,%llu,%d,%lu,%d\n", isrData.timestamp, esp_timer_get_time(), isrData.state, isrData.isrCallCount,
-                 interpolated);
+    file->printf("%llu,%llu,%d,%lu,%d\n", isrData.timestamp, esp_timer_get_time(), isrData.state, isrData.isrCallCount);
 }
 void fileMonitorTask(void *pvParameters)
 {
-    File file = LittleFS.open("/data.csv", FILE_APPEND, true);
-    file.println("timestamp(us),writeTimestamp(us),pinState,isrCallCount,interpolated");
-
-    ISRData isrData, lastIsrData;
-    bool firstEvent = true;
+    File file = LittleFS.open("/data.csv", FILE_APPEND);
+    file.println("timestamp(us),writeTimestamp(us),pinState,isrCallCount");
+    ISRData isrData;
     while (true)
     {
         if (xQueueReceive(_fileMon, &isrData, portMAX_DELAY) == pdPASS)
         {
-            if (!firstEvent && isrData.state == lastIsrData.state)
+            /*if (!firstEvent && isrData.state == lastIsrData.state)
             {
                 // Detected a missing event; interpolate it.
                 ISRData interpolatedData;
@@ -66,16 +63,13 @@ void fileMonitorTask(void *pvParameters)
                 interpolatedData.isrCallCount = 0; // lastIsrData.isrCallCount; // Simple interpolation
                 // Log the interpolated event
                 writeIsrEvt(&file, interpolatedData, true);
-            }
+            }*/
 
             // Process and log the current event
-            if (!firstEvent || isrData.state != lastIsrData.state)
-            {
-                writeIsrEvt(&file, isrData, false);
-            }
-
-            lastIsrData = isrData;
-            firstEvent = false;
+            // if (!firstEvent || isrData.state != lastIsrData.state)
+            //{
+            writeIsrEvt(&file, isrData);
+            //}
         }
         // file.flush();
     }
@@ -127,14 +121,15 @@ void setupInterrupt()
 void setup()
 {
     Serial.begin(BAUD_RATE);
+    delay(4000); // give us time to plug in monitoring
     // Initialize LittleFS /
-    if (!LittleFS.begin(true))
+
+    if (!LittleFS.begin(false))
     {
         Serial.println("An Error has occurred while mounting LittleFS");
         return;
     }
 
-    delay(4000); // give us time to plug in monitoring
     Serial.println("Dump & Erase...");
     dumpAndEraseData();
     Serial.println("All done with D&E");

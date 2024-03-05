@@ -41,7 +41,7 @@ static void IRAM_ATTR hallEffectISR(void *arg)
 }
 void writeIsrEvt(File *file, ISRData isrData)
 {
-    file->printf("%llu,%llu,%d,%lu,%d\n", isrData.timestamp, esp_timer_get_time(), isrData.state, isrData.isrCallCount);
+    file->printf("%llu,%llu,%d,%lu\n", isrData.timestamp, esp_timer_get_time(), isrData.state, isrData.isrCallCount);
 }
 void fileMonitorTask(void *pvParameters)
 {

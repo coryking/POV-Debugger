@@ -35,18 +35,17 @@ static void IRAM_ATTR hallEffectISR(void *arg)
     /* Now the buffer is empty we can switch context if necessary. */
     if (xHigherPriorityTaskWoken)
     {
-        /* Actual macro used here is port specific. */
         portYIELD_FROM_ISR();
     }
 }
 void writeIsrEvt(File *file, ISRData isrData)
 {
-    file->printf("%llu,%llu,%d,%lu\n", isrData.timestamp, esp_timer_get_time(), isrData.state, isrData.isrCallCount);
+    file->printf("%lu,%llu,%llu,%d\n", isrData.isrCallCount, isrData.timestamp, esp_timer_get_time(), isrData.state);
 }
 void fileMonitorTask(void *pvParameters)
 {
     File file = SPIFFS.open("/data.csv", FILE_APPEND);
-    file.println("timestamp(us),writeTimestamp(us),pinState,isrCallCount");
+    file.println("isrCallCount,timestamp(us),writeTimestamp(us),pinState");
     ISRData isrData;
     while (true)
     {

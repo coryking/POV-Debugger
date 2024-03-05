@@ -1,7 +1,7 @@
 #include "freertos/FreeRTOS.h"
-#include "freertos/timers.h"
-#include "freertos/task.h"
 #include "freertos/queue.h"
+#include "freertos/task.h"
+#include "freertos/timers.h"
 #include <Arduino.h>
 
 #include <esp_err.h>
@@ -14,13 +14,10 @@
 #include <string.h>
 #include <vector>
 
-// Define globally in one of your C files
-volatile timestamp_t IRAM_ATTR lastTriggerTime = 0;
-volatile TriggerState IRAM_ATTR lastEdgeTrigger = TriggerState::FALSE; // Use appropriate type or enum
-
+/// Total number of ISR calls...
+volatile uint32_t IRAM_ATTR total_isr = 0;
 TaskHandle_t _fileTask;
 QueueHandle_t _fileMon;
-
 
 // ISR Handler
 static void IRAM_ATTR hallEffectISR(void *arg)
@@ -31,8 +28,8 @@ static void IRAM_ATTR hallEffectISR(void *arg)
     xHigherPriorityTaskWoken = pdFALSE;
 
     auto gpioState = gpio_get_level(HALL_PIN);
-    lastTriggerTime = esp_timer_get_time();
-    ISRData data = {lastTriggerTime, gpioState};
+    timestamp_t lastTriggerTime = esp_timer_get_time();
+    ISRData data = {lastTriggerTime, gpioState, ++total_isr};
     xQueueSendFromISR(_fileMon, &data, &xHigherPriorityTaskWoken);
     /* Now the buffer is empty we can switch context if necessary. */
     if (xHigherPriorityTaskWoken)
@@ -41,14 +38,14 @@ static void IRAM_ATTR hallEffectISR(void *arg)
         portYIELD_FROM_ISR();
     }
 }
-void writeIsrEvt(File* file,ISRData isrData)
+void writeIsrEvt(File *file, ISRData isrData)
 {
-    file->println(String(isrData.timestamp) + "," + String(isrData.state - 1));
+    file->printf("%llu,%llu,%d,%lu\n", isrData.timestamp, esp_timer_get_time(), isrData.state, isrData.isrCallCount);
 }
 void fileMonitorTask(void *pvParameters)
 {
     File file = SPIFFS.open("/data.csv", FILE_APPEND);
-
+    file.println("timestamp(us),writeTimestamp(us),pinState,isrCallCount");
     while (true)
     {
         ISRData isrData;
@@ -96,7 +93,7 @@ void setupInterrupt()
     // Additional steps may be required to set the ISR in assembly, which might involve
     // registering the ISR with the ESP_INTR_FLAG_HIGH flag and ensuring it is in IRAM
     // Install the ISR service without an ISR handler function specified
-    ESP_ERROR_CHECK(gpio_install_isr_service(ESP_INTR_FLAG_LEVEL3));
+    ESP_ERROR_CHECK(gpio_install_isr_service(ESP_INTR_FLAG_LEVEL3 | ESP_INTR_FLAG_IRAM));
 
     // Attach the ISR handler for the hall effect sensor
     ESP_ERROR_CHECK(gpio_isr_handler_add(HALL_PIN, hallEffectISR, nullptr));
@@ -104,14 +101,13 @@ void setupInterrupt()
 
 void setup()
 {
-    Serial.begin(115200);
+    Serial.begin(BAUD_RATE);
     // Initialize SPIFFS
     if (!SPIFFS.begin(true))
     {
         Serial.println("An Error has occurred while mounting SPIFFS");
         return;
     }
-
 
     delay(4000); // give us time to plug in monitoring
     Serial.println("Dump & Erase...");
@@ -124,5 +120,5 @@ void setup()
 
 void loop()
 {
-    
+    delay(1); // nothing to do in this loop but chillax
 }

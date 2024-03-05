@@ -2,6 +2,8 @@
 #define __CONFIG_H__
 #include "driver/gpio.h"
 
+#define BAUD_RATE 460800
+
 #ifdef ARDUINO_LOLIN_S3_MINI
 #define HALL_PIN GPIO_NUM_6
 #else

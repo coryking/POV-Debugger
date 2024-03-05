@@ -6,11 +6,11 @@
 
 #include <esp_err.h>
 
-#include "FS.h"
-#include "SPIFFS.h"
 #include "config.h"
 #include "esp_log.h"
 #include "types.h"
+#include <FS.h>
+#include <LittleFS.h>
 #include <string.h>
 #include <vector>
 
@@ -38,20 +38,50 @@ static void IRAM_ATTR hallEffectISR(void *arg)
         portYIELD_FROM_ISR();
     }
 }
-void writeIsrEvt(File *file, ISRData isrData)
+void writeIsrEvt(File *file, ISRData isrData, bool interpolated)
 {
-    file->printf("%llu,%llu,%d,%lu\n", isrData.timestamp, esp_timer_get_time(), isrData.state, isrData.isrCallCount);
+    file->printf("%llu,%llu,%d,%lu,%d\n", isrData.timestamp, esp_timer_get_time(), isrData.state, isrData.isrCallCount,
+                 interpolated);
 }
 void fileMonitorTask(void *pvParameters)
 {
-    File file = SPIFFS.open("/data.csv", FILE_APPEND);
-    file.println("timestamp(us),writeTimestamp(us),pinState,isrCallCount");
+    File file = LittleFS.open("/data.csv", FILE_APPEND);
+    file.println("timestamp(us),writeTimestamp(us),pinState,isrCallCount,interpolated");
+
+    ISRData isrData, lastIsrData;
+    bool firstEvent = true;
+    int flushCount = 0;
     while (true)
     {
-        ISRData isrData;
         if (xQueueReceive(_fileMon, &isrData, portMAX_DELAY) == pdPASS)
         {
-            writeIsrEvt(&file, isrData);
+            if (!firstEvent && isrData.state == lastIsrData.state)
+            {
+                // Detected a missing event; interpolate it.
+                ISRData interpolatedData;
+                // Assuming the missing event is the opposite state
+                interpolatedData.state = !lastIsrData.state;
+                // Split the delta between the current and last timestamp
+                interpolatedData.timestamp = lastIsrData.timestamp + (isrData.timestamp - lastIsrData.timestamp) / 2;
+                // isrCallCount for the interpolated event could be set to a special value or interpolated as well
+                interpolatedData.isrCallCount = lastIsrData.isrCallCount + 1; // Simple interpolation
+                // Log the interpolated event
+                writeIsrEvt(&file, interpolatedData, true);
+            }
+
+            // Process and log the current event
+            if (!firstEvent || isrData.state != lastIsrData.state)
+            {
+                writeIsrEvt(&file, isrData, false);
+            }
+
+            lastIsrData = isrData;
+            firstEvent = false;
+        }
+        if (flushCount++ > 10)
+        {
+            file.flush();
+            flushCount = 0;
         }
     }
     file.close();
@@ -59,7 +89,7 @@ void fileMonitorTask(void *pvParameters)
 
 void dumpAndEraseData()
 {
-    File file = SPIFFS.open("/data.csv");
+    File file = LittleFS.open("/data.csv");
     if (!file)
     {
         Serial.println("Failed to open file for reading");
@@ -74,7 +104,7 @@ void dumpAndEraseData()
     file.close();
 
     // Erase the data by simply removing the file
-    SPIFFS.remove("/data.csv");
+    LittleFS.remove("/data.csv");
 }
 
 void setupInterrupt()
@@ -102,10 +132,10 @@ void setupInterrupt()
 void setup()
 {
     Serial.begin(BAUD_RATE);
-    // Initialize SPIFFS
-    if (!SPIFFS.begin(true))
+    // Initialize LittleFS /
+    if (!LittleFS.begin(true))
     {
-        Serial.println("An Error has occurred while mounting SPIFFS");
+        Serial.println("An Error has occurred while mounting LittleFS");
         return;
     }
 

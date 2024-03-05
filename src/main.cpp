@@ -117,7 +117,7 @@ void setupInterrupt()
     // Additional steps may be required to set the ISR in assembly, which might involve
     // registering the ISR with the ESP_INTR_FLAG_HIGH flag and ensuring it is in IRAM
     // Install the ISR service without an ISR handler function specified
-    ESP_ERROR_CHECK(gpio_install_isr_service(ESP_INTR_FLAG_LEVEL3 | ESP_INTR_FLAG_IRAM));
+    ESP_ERROR_CHECK(gpio_install_isr_service(ESP_INTR_FLAG_LEVEL3));
 
     // Attach the ISR handler for the hall effect sensor
     ESP_ERROR_CHECK(gpio_isr_handler_add(HALL_PIN, hallEffectISR, nullptr));

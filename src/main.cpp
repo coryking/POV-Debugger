@@ -1,50 +1,62 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/timers.h"
+#include "freertos/task.h"
+#include "freertos/queue.h"
 #include <Arduino.h>
 
 #include <esp_err.h>
 
 #include "FS.h"
 #include "SPIFFS.h"
+#include "config.h"
 #include "esp_log.h"
 #include "types.h"
-#include "config.h"
-#include "xtensa/core-macros.h"
 #include <string.h>
-
-// Typedefs for clarity
-typedef uint64_t delta_t;
-typedef uint64_t timestamp_t;
+#include <vector>
 
 // Define globally in one of your C files
-volatile uint32_t IRAM_ATTR lastCycleCount = 0;
+volatile timestamp_t IRAM_ATTR lastTriggerTime = 0;
 volatile TriggerState IRAM_ATTR lastEdgeTrigger = TriggerState::FALSE; // Use appropriate type or enum
+
+TaskHandle_t _fileTask;
+QueueHandle_t _fileMon;
+
 
 // ISR Handler
 static void IRAM_ATTR hallEffectISR(void *arg)
 {
-    auto gpioState = gpio_get_level(HALL_PIN);
-    lastCycleCount = XTHAL_GET_CCOUNT(); // Get cycle count for timestamp
+    BaseType_t xHigherPriorityTaskWoken;
 
-    if (gpioState == 1)
-    { // Check if the interrupt was due to a rising edge
-        lastEdgeTrigger = TriggerState::RISE;
-    }
-    else
-    { // Otherwise, it's a falling edge
-        lastEdgeTrigger = TriggerState::FALL;
+    /* We have not woken a task at the start of the ISR. */
+    xHigherPriorityTaskWoken = pdFALSE;
+
+    auto gpioState = gpio_get_level(HALL_PIN);
+    lastTriggerTime = esp_timer_get_time();
+    ISRData data = {lastTriggerTime, gpioState};
+    xQueueSendFromISR(_fileMon, &data, &xHigherPriorityTaskWoken);
+    /* Now the buffer is empty we can switch context if necessary. */
+    if (xHigherPriorityTaskWoken)
+    {
+        /* Actual macro used here is port specific. */
+        portYIELD_FROM_ISR();
     }
 }
-
-void writeInterrupt(uint64_t timestamp, TriggerState pinState)
+void writeIsrEvt(File* file,ISRData isrData)
+{
+    file->println(String(isrData.timestamp) + "," + String(isrData.state - 1));
+}
+void fileMonitorTask(void *pvParameters)
 {
     File file = SPIFFS.open("/data.csv", FILE_APPEND);
-    if (!file)
+
+    while (true)
     {
-        Serial.println("Failed to open file for appending");
-        return;
+        ISRData isrData;
+        if (xQueueReceive(_fileMon, &isrData, portMAX_DELAY) == pdPASS)
+        {
+            writeIsrEvt(&file, isrData);
+        }
     }
-    file.println(String(timestamp) + "," + String(pinState - 1));
     file.close();
 }
 
@@ -100,19 +112,17 @@ void setup()
         return;
     }
 
-    //Serial.println("Dump & Erase...");
+
+    delay(4000); // give us time to plug in monitoring
+    Serial.println("Dump & Erase...");
     dumpAndEraseData();
-    //Serial.println("All done with D&E");
+    Serial.println("All done with D&E");
+    _fileMon = xQueueCreate(40, sizeof(ISRData));
+    xTaskCreate(&fileMonitorTask, "FileWriter", RTOS::LARGE_STACK_SIZE, nullptr, RTOS::HIGH_PRIORITY, &_fileTask);
     setupInterrupt();
 }
 
 void loop()
 {
-    if (lastEdgeTrigger != TriggerState::FALSE)
-    {
-        timestamp_t microsecs = CYCLES_TO_MICROSECONDS(lastCycleCount);
-        writeInterrupt(microsecs,lastEdgeTrigger);
-        lastEdgeTrigger = TriggerState::FALSE;
-    }
-    delay(1);
+    
 }

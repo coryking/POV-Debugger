@@ -3,24 +3,30 @@
 #include "freertos/task.h"
 #include "freertos/timers.h"
 #include <Arduino.h>
-
-#include <esp_err.h>
+#define FASTLED_ALL_PINS_HARDWARE_SPI
+#define FASTLED_ESP32_SPI_BUS FSPI
+#include <FastLED.h>
 
 #include "config.h"
-#include "esp_log.h"
+#include <esp_err.h>
+
 #include "types.h"
-#include <FS.h>
-// #include <LittleFS.h>
-#include <SPIFFS.h>
+
 #include <string.h>
 #include <vector>
 
 /// Total number of ISR calls...
 volatile uint32_t IRAM_ATTR total_isr = 0;
 
+QueueHandle_t triggerQueue;
+TaskHandle_t ledRenderTask_h;
+
+CRGB leds[NUM_LEDS];
+
 #ifdef FILEMON
+#include <FS.h>
+#include <SPIFFS.h>
 TaskHandle_t _fileTask;
-QueueHandle_t _fileMon;
 #endif
 
 // ISR Handler
@@ -34,11 +40,87 @@ static void IRAM_ATTR hallEffectISR(void *arg)
     auto gpioState = gpio_get_level(HALL_PIN);
     timestamp_t lastTriggerTime = esp_timer_get_time();
     ISRData data = {lastTriggerTime, gpioState, ++total_isr};
-    xQueueSendFromISR(_fileMon, &data, &xHigherPriorityTaskWoken);
+    xQueueSendFromISR(triggerQueue, &data, &xHigherPriorityTaskWoken);
     /* Now the buffer is empty we can switch context if necessary. */
     if (xHigherPriorityTaskWoken)
     {
         portYIELD_FROM_ISR();
+    }
+}
+
+// Timer handle
+esp_timer_handle_t timer_handle = nullptr;
+
+// Frame control
+int currentFrame = 0;
+const int numOfFrames = 9; // Adjust as necessary
+delta_t nextCallbackMicros = 0;
+
+// Function declarations
+void renderFrame();
+
+// Timer callback
+void timerCallback(void *arg)
+{
+    renderFrame(); // Call renderFrame without parameters
+}
+
+void setTimer(delta_t delayMicros)
+{
+    if (timer_handle == nullptr)
+    {
+        const esp_timer_create_args_t timer_args = {.callback = timerCallback, .name = "frame-timer"};
+        esp_timer_create(&timer_args, &timer_handle);
+    }
+    esp_timer_start_once(timer_handle, delayMicros);
+}
+
+void renderFrame()
+{
+    if (currentFrame >= numOfFrames)
+    {
+        currentFrame = 0; // Reset frame counter for the next rotation
+        return;           // Stop the rendering chain
+    }
+
+    // Render the current frame
+    fill_solid(&leds[0], NUM_LEDS, CRGB::Black);
+    leds[currentFrame] = CRGB::Red; // Example: simple frame rendering
+    FastLED.show();
+
+    // Prepare for the next frame
+    currentFrame++;
+    // Set the timer for the next frame immediately
+    // Assumes nextCallbackMicros is calculated based on rotation interval / numOfFrames
+    setTimer(nextCallbackMicros); // This needs to be calculated beforehand
+}
+
+void ledRenderTask(void *pvParameters)
+{
+    static bool firstPass = true;
+    static timestamp_t lastTimestamp = 0;
+    ISRData isrData;
+
+    while (true)
+    {
+        if (xQueueReceive(triggerQueue, &isrData, portMAX_DELAY) == pdPASS)
+        {
+            if (firstPass)
+            {
+                lastTimestamp = isrData.timestamp;
+                firstPass = false;
+            }
+            else
+            {
+                // Calculate the rotation interval and divide by numOfFrames for frame timing
+                delta_t rotationInterval = isrData.timestamp - lastTimestamp;
+                nextCallbackMicros = rotationInterval / numOfFrames;
+                lastTimestamp = isrData.timestamp;
+
+                // Start rendering the first frame immediately, subsequent frames are timed
+                renderFrame();
+            }
+        }
     }
 }
 #ifdef FILEMON
@@ -54,7 +136,7 @@ void fileMonitorTask(void *pvParameters)
     ISRData isrData;
     while (true)
     {
-        if (xQueueReceive(_fileMon, &isrData, portMAX_DELAY) == pdPASS)
+        if (xQueueReceive(triggerQueue, &isrData, portMAX_DELAY) == pdPASS)
         {
 
             writeIsrEvt(&file, isrData);
@@ -118,16 +200,25 @@ void setupInterrupt()
     ESP_ERROR_CHECK(gpio_isr_handler_add(HALL_PIN, hallEffectISR, nullptr));
 }
 
+void setupRenderTask()
+{
+    xTaskCreate(&ledRenderTask, "RenderTask", RTOS::LARGE_STACK_SIZE, nullptr, RTOS::HIGH_PRIORITY, &ledRenderTask_h);
+}
+
 void setup()
 {
     Serial.begin(BAUD_RATE);
     delay(4000); // give us time to plug in monitoring
+    triggerQueue = xQueueCreate(40, sizeof(ISRData));
+    FastLED.addLeds<SK9822, LED_DATA, LED_CLOCK, BGR, DATA_RATE_MHZ(LED_DATA_RATE_MHZ)>(&leds[0], NUM_LEDS);
 
+#ifdef FILEMON
     Serial.println("Dump & Erase...");
     dumpAndEraseData();
     Serial.println("All done with D&E");
-    _fileMon = xQueueCreate(40, sizeof(ISRData));
     xTaskCreate(&fileMonitorTask, "FileWriter", RTOS::LARGE_STACK_SIZE, nullptr, RTOS::HIGH_PRIORITY, &_fileTask);
+#endif
+
     Serial.println("Task created");
     setupInterrupt();
     Serial.println("Interrupt setup");

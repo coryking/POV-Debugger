@@ -17,8 +17,11 @@
 
 /// Total number of ISR calls...
 volatile uint32_t IRAM_ATTR total_isr = 0;
+
+#ifdef FILEMON
 TaskHandle_t _fileTask;
 QueueHandle_t _fileMon;
+#endif
 
 // ISR Handler
 static void IRAM_ATTR hallEffectISR(void *arg)
@@ -38,10 +41,12 @@ static void IRAM_ATTR hallEffectISR(void *arg)
         portYIELD_FROM_ISR();
     }
 }
+#ifdef FILEMON
 void writeIsrEvt(File *file, ISRData isrData)
 {
     file->printf("%lu,%llu,%llu,%d\n", isrData.isrCallCount, isrData.timestamp, esp_timer_get_time(), isrData.state);
 }
+
 void fileMonitorTask(void *pvParameters)
 {
     File file = SPIFFS.open("/data.csv", FILE_APPEND);
@@ -51,33 +56,24 @@ void fileMonitorTask(void *pvParameters)
     {
         if (xQueueReceive(_fileMon, &isrData, portMAX_DELAY) == pdPASS)
         {
-            /*if (!firstEvent && isrData.state == lastIsrData.state)
-            {
-                // Detected a missing event; interpolate it.
-                ISRData interpolatedData;
-                // Assuming the missing event is the opposite state
-                interpolatedData.state = !lastIsrData.state;
-                // Split the delta between the current and last timestamp
-                interpolatedData.timestamp = lastIsrData.timestamp + (isrData.timestamp - lastIsrData.timestamp) / 2;
-                // isrCallCount for the interpolated event could be set to a special value or interpolated as well
-                interpolatedData.isrCallCount = 0; // lastIsrData.isrCallCount; // Simple interpolation
-                // Log the interpolated event
-                writeIsrEvt(&file, interpolatedData, true);
-            }*/
 
-            // Process and log the current event
-            // if (!firstEvent || isrData.state != lastIsrData.state)
-            //{
             writeIsrEvt(&file, isrData);
-            //}
         }
-        // file.flush();
     }
     file.close();
 }
 
 void dumpAndEraseData()
 {
+
+    // Initialize LittleFS /
+
+    if (!SPIFFS.begin(false))
+    {
+        Serial.println("An Error has occurred while mounting LittleFS");
+        return;
+    }
+
     File file = SPIFFS.open("/data.csv", FILE_READ);
 
     // File file = LittleFS.open("/data.csv");
@@ -97,6 +93,8 @@ void dumpAndEraseData()
     // Erase the data by simply removing the file
     SPIFFS.remove("/data.csv");
 }
+
+#endif
 
 void setupInterrupt()
 {
@@ -124,13 +122,6 @@ void setup()
 {
     Serial.begin(BAUD_RATE);
     delay(4000); // give us time to plug in monitoring
-    // Initialize LittleFS /
-
-    if (!SPIFFS.begin(false))
-    {
-        Serial.println("An Error has occurred while mounting LittleFS");
-        return;
-    }
 
     Serial.println("Dump & Erase...");
     dumpAndEraseData();

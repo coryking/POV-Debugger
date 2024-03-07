@@ -14,6 +14,7 @@
 
 #include <string.h>
 #include <vector>
+#include "Renderers.h"
 
 /// Total number of ISR calls...
 volatile uint32_t IRAM_ATTR total_isr = 0;
@@ -53,9 +54,9 @@ esp_timer_handle_t timer_handle = nullptr;
 
 // Frame control
 int currentFrame = 0;
-const int numOfFrames = 360; // Adjust as necessary
 delta_t nextCallbackMicros = 0;
-CRGBPalette256 myPalette = RainbowStripesColors_p;
+
+BaseRenderer<NUM_LEDS, NUM_ARMS> *renderer;
 
 // Function declarations
 void renderFrame();
@@ -76,34 +77,6 @@ void setTimer(delta_t delayMicros)
     esp_timer_start_once(timer_handle, delayMicros);
 }
 
-void renderArmsForFrame(int frame)
-{
-    static const int segmap[] = {1, 0, 2}; // Correct physical mapping
-    int ledsPerArm = NUM_LEDS / 3;         // LEDs per arm
-    static int hue = 0;
-
-    // Clear all LEDs
-    fill_solid(&leds[0], NUM_LEDS, CRGB::Black);
-
-    // Determine which arm and LED to illuminate for this frame
-    int armToIlluminate = frame / ledsPerArm;  // Determine which arm is active based on the frame
-    int ledPositionInArm = frame % ledsPerArm; // Determine the position in the active arm
-
-    // Correct for physical layout using segmap and calculate actual position in LED array
-    int actualArm = segmap[armToIlluminate % 3];                    // Ensure we loop through the arms correctly
-    int actualPosition = actualArm * ledsPerArm + ledPositionInArm; // Calculate actual LED position
-
-    // Illuminate the calculated LED position
-    if (actualPosition < NUM_LEDS)
-    { // Safety check
-        leds[actualPosition] = CHSV(hue, 255, 255);
-    }
-    if (frame == numOfFrames - 1)
-    {
-        hue = (hue + 1) % 256;
-    }
-}
-
 void renderFrame()
 {
     if (currentFrame >= numOfFrames)
@@ -113,7 +86,7 @@ void renderFrame()
     }
 
     // Render the arms for the current frame
-    renderArmsForFrame(currentFrame);
+    renderer->renderFrame(currentFrame, leds);
 
     FastLED.show();
 
@@ -234,7 +207,7 @@ void setup()
     triggerQueue = xQueueCreate(40, sizeof(ISRData));
     FastLED.addLeds<SK9822, LED_DATA, LED_CLOCK, BGR, DATA_RATE_MHZ(LED_DATA_RATE_MHZ)>(&leds[0], NUM_LEDS);
     FastLED.setBrightness(25);
-
+    renderer = new HueShiftRenderer<NUM_LEDS, NUM_ARMS>(numOfFrames, armMap);
 #ifdef FILEMON
     Serial.println("Dump & Erase...");
     dumpAndEraseData();

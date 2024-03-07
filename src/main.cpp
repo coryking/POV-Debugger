@@ -53,7 +53,7 @@ esp_timer_handle_t timer_handle = nullptr;
 
 // Frame control
 int currentFrame = 0;
-const int numOfFrames = 120; // Adjust as necessary
+const int numOfFrames = 360; // Adjust as necessary
 delta_t nextCallbackMicros = 0;
 CRGBPalette256 myPalette = RainbowStripesColors_p;
 
@@ -78,19 +78,29 @@ void setTimer(delta_t delayMicros)
 
 void renderArmsForFrame(int frame)
 {
-    static const int segmap[] = {1, 0, 2};             // Remapping for physical layout
-    CRGBPalette256 myPalette = RainbowStripesColors_p; // Ensure this palette is accessible
+    static const int segmap[] = {1, 0, 2}; // Correct physical mapping
+    int ledsPerArm = NUM_LEDS / 3;         // LEDs per arm
+    static int hue = 0;
 
-    // Calculate the base palette index for the current frame
-    int baseIndex = map(frame, 0, numOfFrames - 1, 0, 255);
+    // Clear all LEDs
+    fill_solid(&leds[0], NUM_LEDS, CRGB::Black);
 
-    // Render each arm with its respective color offset
-    for (int arm = 0; arm < 3; arm++)
+    // Determine which arm and LED to illuminate for this frame
+    int armToIlluminate = frame / ledsPerArm;  // Determine which arm is active based on the frame
+    int ledPositionInArm = frame % ledsPerArm; // Determine the position in the active arm
+
+    // Correct for physical layout using segmap and calculate actual position in LED array
+    int actualArm = segmap[armToIlluminate % 3];                    // Ensure we loop through the arms correctly
+    int actualPosition = actualArm * ledsPerArm + ledPositionInArm; // Calculate actual LED position
+
+    // Illuminate the calculated LED position
+    if (actualPosition < NUM_LEDS)
+    { // Safety check
+        leds[actualPosition] = CHSV(hue, 255, 255);
+    }
+    if (frame == numOfFrames - 1)
     {
-        // Calculate the offset for each arm, ensuring it wraps within the palette range
-        int offset = (numOfFrames / 3) * segmap[arm]; // Calculate offset based on arm's logical position
-        int armIndex = (baseIndex + offset) % 256;    // Wrap around the palette
-        fill_solid(&leds[segmap[arm] * (NUM_LEDS / 3)], NUM_LEDS / 3, ColorFromPalette(myPalette, armIndex));
+        hue = (hue + 1) % 256;
     }
 }
 

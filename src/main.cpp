@@ -55,7 +55,7 @@ esp_timer_handle_t timer_handle = nullptr;
 int currentFrame = 0;
 const int numOfFrames = 120; // Adjust as necessary
 delta_t nextCallbackMicros = 0;
-CRGBPalette32 myPalette = RainbowStripesColors_p;
+CRGBPalette256 myPalette = RainbowStripesColors_p;
 
 // Function declarations
 void renderFrame();
@@ -76,6 +76,24 @@ void setTimer(delta_t delayMicros)
     esp_timer_start_once(timer_handle, delayMicros);
 }
 
+void renderArmsForFrame(int frame)
+{
+    static const int segmap[] = {1, 0, 2};             // Remapping for physical layout
+    CRGBPalette256 myPalette = RainbowStripesColors_p; // Ensure this palette is accessible
+
+    // Calculate the base palette index for the current frame
+    int baseIndex = map(frame, 0, numOfFrames - 1, 0, 255);
+
+    // Render each arm with its respective color offset
+    for (int arm = 0; arm < 3; arm++)
+    {
+        // Calculate the offset for each arm, ensuring it wraps within the palette range
+        int offset = (numOfFrames / 3) * segmap[arm]; // Calculate offset based on arm's logical position
+        int armIndex = (baseIndex + offset) % 256;    // Wrap around the palette
+        fill_solid(&leds[segmap[arm] * (NUM_LEDS / 3)], NUM_LEDS / 3, ColorFromPalette(myPalette, armIndex));
+    }
+}
+
 void renderFrame()
 {
     if (currentFrame >= numOfFrames)
@@ -84,18 +102,15 @@ void renderFrame()
         return;           // Stop the rendering chain
     }
 
-    // Render the current frame
-    int pIndex = map(currentFrame, 0, 31, 0, numOfFrames - 1);
-    fill_solid(&leds[0], NUM_LEDS, ColorFromPalette(myPalette, pIndex));
-    // fill_solid(&leds[0], NUM_LEDS, CRGB::Black);
-    // leds[currentFrame] = CRGB::Red; // Example: simple frame rendering
+    // Render the arms for the current frame
+    renderArmsForFrame(currentFrame);
+
     FastLED.show();
 
     // Prepare for the next frame
     currentFrame++;
 
     // Set the timer for the next frame immediately
-    // Assumes nextCallbackMicros is calculated based on rotation interval / numOfFrames
     setTimer(nextCallbackMicros); // This needs to be calculated beforehand
 }
 

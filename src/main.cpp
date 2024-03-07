@@ -1,11 +1,11 @@
+#define FASTLED_ALL_PINS_HARDWARE_SPI
+#define FASTLED_ESP32_SPI_BUS FSPI
+#include <FastLED.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
 #include "freertos/task.h"
 #include "freertos/timers.h"
 #include <Arduino.h>
-#define FASTLED_ALL_PINS_HARDWARE_SPI
-#define FASTLED_ESP32_SPI_BUS FSPI
-#include <FastLED.h>
 
 #include "config.h"
 #include <esp_err.h>
@@ -53,8 +53,9 @@ esp_timer_handle_t timer_handle = nullptr;
 
 // Frame control
 int currentFrame = 0;
-const int numOfFrames = 9; // Adjust as necessary
+const int numOfFrames = 120; // Adjust as necessary
 delta_t nextCallbackMicros = 0;
+CRGBPalette32 myPalette = RainbowStripesColors_p;
 
 // Function declarations
 void renderFrame();
@@ -84,12 +85,15 @@ void renderFrame()
     }
 
     // Render the current frame
-    fill_solid(&leds[0], NUM_LEDS, CRGB::Black);
-    leds[currentFrame] = CRGB::Red; // Example: simple frame rendering
+    int pIndex = map(currentFrame, 0, 31, 0, numOfFrames - 1);
+    fill_solid(&leds[0], NUM_LEDS, ColorFromPalette(myPalette, pIndex));
+    // fill_solid(&leds[0], NUM_LEDS, CRGB::Black);
+    // leds[currentFrame] = CRGB::Red; // Example: simple frame rendering
     FastLED.show();
 
     // Prepare for the next frame
     currentFrame++;
+
     // Set the timer for the next frame immediately
     // Assumes nextCallbackMicros is calculated based on rotation interval / numOfFrames
     setTimer(nextCallbackMicros); // This needs to be calculated beforehand
@@ -97,29 +101,22 @@ void renderFrame()
 
 void ledRenderTask(void *pvParameters)
 {
-    static bool firstPass = true;
-    static timestamp_t lastTimestamp = 0;
+    timestamp_t lastTimestamp = esp_timer_get_time();
     ISRData isrData;
+    Serial.println("Here we are");
 
     while (true)
     {
         if (xQueueReceive(triggerQueue, &isrData, portMAX_DELAY) == pdPASS)
         {
-            if (firstPass)
-            {
-                lastTimestamp = isrData.timestamp;
-                firstPass = false;
-            }
-            else
-            {
-                // Calculate the rotation interval and divide by numOfFrames for frame timing
-                delta_t rotationInterval = isrData.timestamp - lastTimestamp;
-                nextCallbackMicros = rotationInterval / numOfFrames;
-                lastTimestamp = isrData.timestamp;
 
-                // Start rendering the first frame immediately, subsequent frames are timed
-                renderFrame();
-            }
+            // Calculate the rotation interval and divide by numOfFrames for frame timing
+            delta_t rotationInterval = isrData.timestamp - lastTimestamp;
+            nextCallbackMicros = rotationInterval / numOfFrames;
+            lastTimestamp = isrData.timestamp;
+
+            // Start rendering the first frame immediately, subsequent frames are timed
+            renderFrame();
         }
     }
 }
@@ -184,7 +181,7 @@ void setupInterrupt()
 
     // Configure the GPIO pin for the hall effect sensor
     gpio_config_t io_conf = {};
-    io_conf.intr_type = GPIO_INTR_ANYEDGE; // We will modify this for specific edge detection
+    io_conf.intr_type = GPIO_INTR_NEGEDGE; // We will modify this for specific edge detection
     io_conf.mode = GPIO_MODE_INPUT;
     io_conf.pin_bit_mask = (1ULL << pin);
     io_conf.pull_down_en = GPIO_PULLDOWN_DISABLE;
@@ -211,6 +208,7 @@ void setup()
     delay(4000); // give us time to plug in monitoring
     triggerQueue = xQueueCreate(40, sizeof(ISRData));
     FastLED.addLeds<SK9822, LED_DATA, LED_CLOCK, BGR, DATA_RATE_MHZ(LED_DATA_RATE_MHZ)>(&leds[0], NUM_LEDS);
+    FastLED.setBrightness(25);
 
 #ifdef FILEMON
     Serial.println("Dump & Erase...");
@@ -218,7 +216,7 @@ void setup()
     Serial.println("All done with D&E");
     xTaskCreate(&fileMonitorTask, "FileWriter", RTOS::LARGE_STACK_SIZE, nullptr, RTOS::HIGH_PRIORITY, &_fileTask);
 #endif
-
+    setupRenderTask();
     Serial.println("Task created");
     setupInterrupt();
     Serial.println("Interrupt setup");

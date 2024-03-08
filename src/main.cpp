@@ -22,8 +22,6 @@ volatile uint32_t IRAM_ATTR total_isr = 0;
 QueueHandle_t triggerQueue;
 TaskHandle_t ledRenderTask_h;
 
-CRGB leds[NUM_LEDS];
-
 #ifdef FILEMON
 #include <FS.h>
 #include <SPIFFS.h>
@@ -86,7 +84,7 @@ void renderFrame()
     }
 
     // Render the arms for the current frame
-    renderer->renderFrame(currentFrame, leds);
+    renderer->renderFrame(currentFrame);
 
     FastLED.show();
 
@@ -205,9 +203,8 @@ void setup()
     Serial.begin(BAUD_RATE);
     delay(4000); // give us time to plug in monitoring
     triggerQueue = xQueueCreate(40, sizeof(ISRData));
-    FastLED.addLeds<SK9822, LED_DATA, LED_CLOCK, BGR, DATA_RATE_MHZ(LED_DATA_RATE_MHZ)>(&leds[0], NUM_LEDS);
-    FastLED.setBrightness(25);
     renderer = new HueShiftRenderer<NUM_LEDS, NUM_ARMS>(numOfFrames, armMap);
+    renderer->start();
 #ifdef FILEMON
     Serial.println("Dump & Erase...");
     dumpAndEraseData();

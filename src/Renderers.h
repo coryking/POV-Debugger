@@ -1,5 +1,6 @@
 #pragma once
 #include <FastLED.h>
+#include "LEDConfig.h"
 #include <array>
 template <int numOfLeds> class Renderer
 {
@@ -7,22 +8,44 @@ template <int numOfLeds> class Renderer
     Renderer(int numOfFrames) : numOfFrames(numOfFrames)
     {
     }
-
-    virtual void renderFrame(int frame, CRGB *leds)
+    void start()
     {
-        doRenderFrame(frame, leds);
+        LEDConfigurator::setupFastLED(leds);
+        this->onStart();
+        this->_started = 1;
+    }
+    void renderFrame(int frame)
+    {
+        assert(this->_started == 1);
+        if (frame == 0)
+        {
+            this->onRotationBegin();
+        }
+
+        this->doRenderFrame(frame, leds);
+
         if (frame == numOfFrames - 1)
         {
-            onRotationComplete();
+            this->onRotationComplete();
         }
     }
 
   protected:
     virtual void doRenderFrame(int frame, CRGB *leds) = 0;
+    virtual void onRotationBegin()
+    {
+    }
     virtual void onRotationComplete()
     {
     }
+    virtual void onStart()
+    {
+    }
     const int numOfFrames;
+
+  private:
+    CRGB leds[numOfLeds];
+    bool _started = 0;
 };
 
 template <int numOfLeds, int numOfArms> class BaseRenderer : public Renderer<numOfLeds>
@@ -91,7 +114,7 @@ template <int numOfLeds, int numOfArms> class HueShiftRenderer : public ArmRende
         hue = (hue + 1) % 256;
     }
 };
-
+/*
 // Adjusting ArmRenderer to handle AR types
 template <int numOfLeds, int numOfArms, template <int> class AR>
 class FancyArmRenderer : public BaseRenderer<numOfLeds, numOfArms>
@@ -125,28 +148,16 @@ class FancyArmRenderer : public BaseRenderer<numOfLeds, numOfArms>
   private:
     AR<numOfLeds / numOfArms> *armRenderers[numOfArms];
 };
-template <int numOfLeds, int numOfArms> class SimpleArmRenderer : public BaseRenderer<numOfLeds, numOfArms>
+*/
+template <int numOfLeds, int numOfArms> class DotArmRenderer : public BaseRenderer<numOfLeds, numOfArms>
 {
   public:
     using BaseRenderer<numOfLeds, numOfArms>::BaseRenderer;
 
     void doRenderFrame(int frame, CRGB *leds) override
     {
-
-        fill_solid(leds, numOfLeds, CRGB::Black);
-
-        // Determine which arm and LED to illuminate for this frame
-        int armToIlluminate = frame / this->numOfLedsPerArm;
-        int ledPositionInArm = frame % this->numOfLedsPerArm;
-
-        // Correct for physical layout using armMap and calculate actual position in LED array
-        int actualArm = this->armMap[armToIlluminate % this->numOfArms];
-        int actualPosition = actualArm * this->numOfLedsPerArm + ledPositionInArm;
-
-        // Illuminate the calculated LED position
-        if (actualPosition < numOfLeds)
+        if (frame == 0)
         {
-            leds[actualPosition] = CRGB::White;
         }
     }
 };

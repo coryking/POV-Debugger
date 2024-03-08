@@ -10,8 +10,8 @@ template <int numOfLeds> class Renderer
     }
     void start()
     {
-        LEDConfigurator::setupFastLED(leds);
-        this->onStart();
+        LEDConfigurator::setupFastLED(_leds);
+        this->onStart(this->_leds);
         this->_started = 1;
     }
     void renderFrame(int frame)
@@ -19,32 +19,32 @@ template <int numOfLeds> class Renderer
         assert(this->_started == 1);
         if (frame == 0)
         {
-            this->onRotationBegin();
+            this->onRotationBegin(this->_leds);
         }
 
-        this->doRenderFrame(frame, leds);
+        this->doRenderFrame(frame, this->_leds);
 
         if (frame == numOfFrames - 1)
         {
-            this->onRotationComplete();
+            this->onRotationComplete(this->_leds);
         }
     }
 
   protected:
     virtual void doRenderFrame(int frame, CRGB *leds) = 0;
-    virtual void onRotationBegin()
+    virtual void onRotationBegin(CRGB *leds)
     {
     }
-    virtual void onRotationComplete()
+    virtual void onRotationComplete(CRGB *leds)
     {
     }
-    virtual void onStart()
+    virtual void onStart(CRGB *leds)
     {
     }
     const int numOfFrames;
 
   private:
-    CRGB leds[numOfLeds];
+    CRGB _leds[numOfLeds];
     bool _started = 0;
 };
 
@@ -108,9 +108,9 @@ template <int numOfLeds, int numOfArms> class HueShiftRenderer : public ArmRende
             }
         }
     }
-    void onRotationComplete() override
+    void onRotationComplete(CRGB *leds) override
     {
-        ArmRenderer<numOfLeds, numOfArms>::onRotationComplete();
+        ArmRenderer<numOfLeds, numOfArms>::onRotationComplete(leds);
         hue = (hue + 1) % 256;
     }
 };

@@ -9,7 +9,7 @@
 #define NUM_ARMS 3
 
 const std::array<int, NUM_ARMS> armMap = {1, 0, 2};
-const int numOfFrames = 9; // Adjust as necessary
+const int numOfFrames = 360 / 9; // Adjust as necessary
 
 class LEDConfigurator
 {

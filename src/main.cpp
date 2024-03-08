@@ -54,7 +54,7 @@ esp_timer_handle_t timer_handle = nullptr;
 int currentFrame = 0;
 delta_t nextCallbackMicros = 0;
 
-BaseRenderer<NUM_LEDS, NUM_ARMS> *renderer;
+FastLEDRenderer<NUM_LEDS, NUM_ARMS> *renderer;
 
 // Function declarations
 void renderFrame();
@@ -95,6 +95,11 @@ void renderFrame()
     setTimer(nextCallbackMicros); // This needs to be calculated beforehand
 }
 
+delta_t adjustRotationInterval(delta_t rotationInterval)
+{
+    return rotationInterval % 25;
+}
+
 void ledRenderTask(void *pvParameters)
 {
     timestamp_t lastTimestamp = esp_timer_get_time();
@@ -108,6 +113,7 @@ void ledRenderTask(void *pvParameters)
 
             // Calculate the rotation interval and divide by numOfFrames for frame timing
             delta_t rotationInterval = isrData.timestamp - lastTimestamp;
+            rotationInterval = adjustRotationInterval(rotationInterval);
             nextCallbackMicros = rotationInterval / numOfFrames;
             lastTimestamp = isrData.timestamp;
 
@@ -203,7 +209,7 @@ void setup()
     Serial.begin(BAUD_RATE);
     delay(4000); // give us time to plug in monitoring
     triggerQueue = xQueueCreate(40, sizeof(ISRData));
-    renderer = new HueShiftRenderer<NUM_LEDS, NUM_ARMS>(numOfFrames, armMap);
+    renderer = new DotArmRenderer<NUM_LEDS, NUM_ARMS>(numOfFrames, armMap);
     renderer->start();
 #ifdef FILEMON
     Serial.println("Dump & Erase...");

@@ -10,7 +10,7 @@ template <int numOfLeds> class Renderer
     }
     void start()
     {
-        LEDConfigurator::setupFastLED(_leds);
+        fill_solid(this->_leds, numOfLeds, CRGB::Black);
         this->onStart(this->_leds);
         this->_started = 1;
     }
@@ -48,15 +48,21 @@ template <int numOfLeds> class Renderer
     bool _started = 0;
 };
 
-template <int numOfLeds, int numOfArms> class BaseRenderer : public Renderer<numOfLeds>
+template <int numOfLeds, int numOfArms> class FastLEDRenderer : public Renderer<numOfLeds>
 {
   public:
-    BaseRenderer(int numOfFrames, const std::array<int, numOfArms> &armMap)
-        : Renderer<numOfLeds>(numOfFrames), armMap(armMap), numOfLedsPerArm(numOfLeds / numOfArms)
+    using Base = Renderer<numOfLeds>;
+    FastLEDRenderer(int numOfFrames, const std::array<int, numOfArms> &armMap)
+        : Base(numOfFrames), armMap(armMap), numOfLedsPerArm(numOfLeds / numOfArms)
     {
     }
 
   protected:
+    void onStart(CRGB *leds) override
+    {
+        Base::onStart(leds);
+        LEDConfigurator::setupFastLED(leds);
+    }
     int computeValueOffsetForArm(int value, int maxValue, int arm)
     {
         float exactOffset = (static_cast<float>(maxValue + 1) / numOfArms) * arm;
@@ -66,10 +72,10 @@ template <int numOfLeds, int numOfArms> class BaseRenderer : public Renderer<num
     const std::array<int, numOfArms> armMap;
 };
 
-template <int numOfLeds, int numOfArms> class ArmRenderer : public BaseRenderer<numOfLeds, numOfArms>
+template <int numOfLeds, int numOfArms> class ArmRenderer : public FastLEDRenderer<numOfLeds, numOfArms>
 {
   public:
-    using BaseRenderer<numOfLeds, numOfArms>::BaseRenderer;
+    using FastLEDRenderer<numOfLeds, numOfArms>::FastLEDRenderer;
 
   protected:
     virtual void renderArm(int frame, int arm, CRGB *armLeds) = 0;
@@ -85,10 +91,9 @@ template <int numOfLeds, int numOfArms> class ArmRenderer : public BaseRenderer<
 
 template <int numOfLeds, int numOfArms> class HueShiftRenderer : public ArmRenderer<numOfLeds, numOfArms>
 {
-  private:
-    uint8_t hue = 0;
 
   public:
+    using AR = ArmRenderer<numOfLeds, numOfArms>;
     using ArmRenderer<numOfLeds, numOfArms>::ArmRenderer;
 
   protected:
@@ -110,9 +115,12 @@ template <int numOfLeds, int numOfArms> class HueShiftRenderer : public ArmRende
     }
     void onRotationComplete(CRGB *leds) override
     {
-        ArmRenderer<numOfLeds, numOfArms>::onRotationComplete(leds);
+        AR::onRotationComplete(leds);
         hue = (hue + 1) % 256;
     }
+
+  private:
+    uint8_t hue = 0;
 };
 /*
 // Adjusting ArmRenderer to handle AR types
@@ -149,23 +157,28 @@ class FancyArmRenderer : public BaseRenderer<numOfLeds, numOfArms>
     AR<numOfLeds / numOfArms> *armRenderers[numOfArms];
 };
 */
-template <int numOfLeds, int numOfArms> class DotArmRenderer : public BaseRenderer<numOfLeds, numOfArms>
+template <int numOfLeds, int numOfArms> class DotArmRenderer : public FastLEDRenderer<numOfLeds, numOfArms>
 {
   public:
-    using BaseRenderer<numOfLeds, numOfArms>::BaseRenderer;
+    using FastLEDRenderer<numOfLeds, numOfArms>::FastLEDRenderer;
 
     void onRenderFrame(int frame, CRGB *leds) override
     {
         if (frame == 0)
         {
+            leds[0] = CRGB::White;
+        }
+        else
+        {
+            leds[0] = CRGB::Black;
         }
     }
 };
 
-template <int numOfLeds, int numOfArms> class LineArmRenderer : public BaseRenderer<numOfLeds, numOfArms>
+template <int numOfLeds, int numOfArms> class LineArmRenderer : public FastLEDRenderer<numOfLeds, numOfArms>
 {
   public:
-    using BaseRenderer<numOfLeds, numOfArms>::BaseRenderer;
+    using FastLEDRenderer<numOfLeds, numOfArms>::FastLEDRenderer;
 
     void onRenderFrame(int frame, CRGB *leds) override
     {

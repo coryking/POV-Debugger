@@ -22,7 +22,7 @@ template <int numOfLeds> class Renderer
             this->onRotationBegin(this->_leds);
         }
 
-        this->doRenderFrame(frame, this->_leds);
+        this->onRenderFrame(frame, this->_leds);
 
         if (frame == numOfFrames - 1)
         {
@@ -31,7 +31,7 @@ template <int numOfLeds> class Renderer
     }
 
   protected:
-    virtual void doRenderFrame(int frame, CRGB *leds) = 0;
+    virtual void onRenderFrame(int frame, CRGB *leds) = 0;
     virtual void onRotationBegin(CRGB *leds)
     {
     }
@@ -73,7 +73,7 @@ template <int numOfLeds, int numOfArms> class ArmRenderer : public BaseRenderer<
 
   protected:
     virtual void renderArm(int frame, int arm, CRGB *armLeds) = 0;
-    void doRenderFrame(int frame, CRGB *leds)
+    void onRenderFrame(int frame, CRGB *leds)
     {
         for (int arm = 0; arm < numOfArms; arm++)
         {
@@ -140,7 +140,7 @@ class FancyArmRenderer : public BaseRenderer<numOfLeds, numOfArms>
     }
 
   protected:
-    void doRenderFrame(int frame, CRGB *leds) override
+    void onRenderFrame(int frame, CRGB *leds) override
     {
         // Example implementation
     }
@@ -154,7 +154,7 @@ template <int numOfLeds, int numOfArms> class DotArmRenderer : public BaseRender
   public:
     using BaseRenderer<numOfLeds, numOfArms>::BaseRenderer;
 
-    void doRenderFrame(int frame, CRGB *leds) override
+    void onRenderFrame(int frame, CRGB *leds) override
     {
         if (frame == 0)
         {
@@ -167,7 +167,7 @@ template <int numOfLeds, int numOfArms> class LineArmRenderer : public BaseRende
   public:
     using BaseRenderer<numOfLeds, numOfArms>::BaseRenderer;
 
-    void doRenderFrame(int frame, CRGB *leds) override
+    void onRenderFrame(int frame, CRGB *leds) override
     {
 
         fill_solid(leds, numOfLeds, CRGB::Black);

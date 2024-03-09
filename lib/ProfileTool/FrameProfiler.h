@@ -2,7 +2,15 @@
 #define FRAMEPROFILER_H
 
 #include "BaseProfiler.h"
-#include "frameProfile.pb.h"
+
+typedef struct _frameProfile
+{
+    uint32_t isr_trigger_number;
+    uint64_t frame_begin_timestamp;
+    uint64_t frame_render_done_timestamp;
+    uint64_t frame_end_timestamp;
+    uint32_t frame_number;
+} frameProfile;
 
 class FrameProfiler : public BaseProfiler
 {
@@ -12,7 +20,6 @@ class FrameProfiler : public BaseProfiler
 
   protected:
     void serializeProfile(File &file, const void *profileData) override;
-    bool deserializeProfile(File &file, void *profileData) override;
     void printProfile(const void *profileData) override;
     void printProfileHeader() override;
 };

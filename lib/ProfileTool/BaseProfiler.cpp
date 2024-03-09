@@ -1,8 +1,7 @@
 #include "BaseProfiler.h"
-#include "pb_encode.h" // Ensure nanopb encode header is included for serialization functionality
 
-BaseProfiler::BaseProfiler(const std::string &filename, size_t profileSize)
-    : _filename(filename), _profileSize(profileSize)
+BaseProfiler::BaseProfiler(const std::string &filename, const std::string &taskname, size_t profileSize)
+    : _filename(filename), _taskname(taskname), _profileSize(profileSize)
 {
     _queueHandle = xQueueCreate(10, profileSize); // Adjust the queue size as necessary
 }
@@ -17,7 +16,7 @@ BaseProfiler::~BaseProfiler()
 
 void BaseProfiler::start()
 {
-    xTaskCreate(&fileMonitorTask, "FileMonitorTask", 2048, this, 1, &this->_fileTaskHandle);
+    xTaskCreate(&fileMonitorTask, _taskname.c_str(), 1024 * 6, this, 10, &this->_fileTaskHandle);
 }
 
 bool BaseProfiler::logProfileData(const void *profileData)
@@ -33,7 +32,6 @@ bool BaseProfiler::logProfileData(const void *profileData)
 void BaseProfiler::fileMonitorTask(void *pvParameters)
 {
     auto *profiler = static_cast<BaseProfiler *>(pvParameters); // Cast the void pointer back to BaseProfiler pointer
-    SPIFFS.begin(true);                                         // Ensure SPIFFS is initialized
 
     File file = SPIFFS.open(profiler->_filename.c_str(), FILE_WRITE); // Open the file for writing
     if (!file)
@@ -69,8 +67,7 @@ void BaseProfiler::fileMonitorTask(void *pvParameters)
 
 void BaseProfiler::dumpToSerial(bool delWhenDone)
 {
-    SPIFFS.begin(true);                              // Ensure SPIFFS is initialized
-    File file = SPIFFS.open(_filename.c_str(), "r"); // Open the file for reading
+    File file = SPIFFS.open(_filename.c_str(), FILE_READ); // Open the file for reading
 
     if (!file)
     {
@@ -93,16 +90,8 @@ void BaseProfiler::dumpToSerial(bool delWhenDone)
 
     while (file.available())
     {
-        // Deserialize the profile from the file
-        bool success = this->deserializeProfile(file, profileData);
-        if (!success)
-        {
-            Serial.println("Decoding failed");
-            break; // Exit if decoding fails
-        }
-
-        // Print the decoded profile data
-        this->printProfile(profileData);
+        String line = file.readStringUntil('\n');
+        Serial.println(line);
     }
 
     file.close(); // Close the file when done

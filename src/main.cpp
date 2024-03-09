@@ -89,7 +89,6 @@ void setTimer(delta_t delayMicros, uint32_t isr_trigger_number)
     esp_timer_start_once(timer_handle, delayMicros);
 }
 
-
 void renderFrame(uint32_t isr_trigger_number)
 {
     if (currentFrame >= numOfFrames)
@@ -192,11 +191,13 @@ void setup()
     renderer->start();
 #ifdef FILEMON
     Serial.println("Dump & Erase...");
+    SPIFFS.begin(false); // Ensure SPIFFS is initialized
+
     _rp = new RotationProfiler("/rp.bin");
     _rp->dumpToSerial(true);
     _rp->start();
     Serial.println("FrameProfile");
-    _fp = new FrameProfiler("fp.bin");
+    _fp = new FrameProfiler("/fp.bin");
     _fp->dumpToSerial(true);
     _fp->start();
     Serial.println("All done with D&E");

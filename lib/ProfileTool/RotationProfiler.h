@@ -10,7 +10,13 @@
 #include <string>
 
 #include "BaseProfiler.h"
-#include "rotationProfile.pb.h" // Include the protobuf-generated header
+typedef struct _RotationProfile
+{
+    uint64_t isr_timestamp;
+    uint64_t rotation_begin_timestamp;
+    uint64_t rotation_end_timestamp;
+    uint32_t isr_trigger_number;
+} RotationProfile;
 
 class RotationProfiler : public BaseProfiler
 {
@@ -20,7 +26,6 @@ class RotationProfiler : public BaseProfiler
 
   protected:
     void serializeProfile(File &file, const void *profileData) override;
-    bool deserializeProfile(File &file, void *profileData) override;
     void printProfile(const void *profileData) override;
     void printProfileHeader() override;
 };

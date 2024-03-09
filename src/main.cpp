@@ -117,21 +117,29 @@ void ledRenderTask(void *pvParameters)
             nextCallbackMicros = rotationInterval / numOfFrames;
             lastTimestamp = isrData.timestamp;
 
+#ifdef FILEMON
+            isrData.renderStart = esp_timer_get_time();
+#endif
             // Start rendering the first frame immediately, subsequent frames are timed
             renderFrame();
+#ifdef FILEMON
+            isrData.renderEnd = esp_timer_get_time();
+            xQueueSend(triggerQueue, &isrData, 0);
+#endif
         }
     }
 }
 #ifdef FILEMON
 void writeIsrEvt(File *file, ISRData isrData)
 {
-    file->printf("%lu,%llu,%llu,%d\n", isrData.isrCallCount, isrData.timestamp, esp_timer_get_time(), isrData.state);
+    file->printf("%lu,%llu,%llu,%llu,%d\n", isrData.isrCallCount, isrData.timestamp, isrData.renderStart,
+                 isrData.renderEnd, isrData.state);
 }
 
 void fileMonitorTask(void *pvParameters)
 {
     File file = SPIFFS.open("/data.csv", FILE_APPEND);
-    file.println("isrCallCount,timestamp(us),writeTimestamp(us),pinState");
+    file.println("isrCallCount,isrTimestamp,renderStartTimestamp,renderEndTimestamp,pinState");
     ISRData isrData;
     while (true)
     {

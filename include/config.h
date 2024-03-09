@@ -10,4 +10,4 @@
 #define HALL_PIN GPIO_NUM_2
 #endif
 
-// #define FILEMON
+#define FILEMON

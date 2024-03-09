@@ -18,6 +18,8 @@ struct ISRData
     uint64_t timestamp;
     int state;
     u32_t isrCallCount;
+    timestamp_t renderStart;
+    timestamp_t renderEnd;
 };
 
 namespace RTOS

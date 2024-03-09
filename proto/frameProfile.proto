@@ -3,7 +3,8 @@ syntax = "proto3";
 message frameProfile {
     uint32 isr_trigger_number = 1;
     uint64 frame_begin_timestamp = 2;
-    uint64 frame_end_timestamp = 3;
-    uint32 frame_number = 4;
+    uint64 frame_render_done_timestamp = 3;
+    uint64 frame_end_timestamp = 4;
+    uint32 frame_number = 5;
 
 }

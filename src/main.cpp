@@ -16,6 +16,7 @@
 #include <vector>
 #include "Renderers.h"
 #include "RotationProfiler.h"
+#include "FrameProfiler.h"
 /// Total number of ISR calls...
 volatile uint32_t IRAM_ATTR total_isr = 0;
 
@@ -24,6 +25,7 @@ TaskHandle_t ledRenderTask_h;
 
 #ifdef FILEMON
 RotationProfiler *_rp;
+FrameProfiler *_fp;
 #endif
 
 // ISR Handler
@@ -58,42 +60,65 @@ delta_t nextCallbackMicros = 0;
 FastLEDRenderer<NUM_LEDS, NUM_ARMS> *renderer;
 
 // Function declarations
-void renderFrame();
+void renderFrame(uint32_t isr_trigger_number);
 
-// Timer callback
+typedef struct
+{
+    void (*callback)(void *);
+    uint32_t isr_trigger_number;
+} timer_callback_data_t;
+
+static timer_callback_data_t cb_data; // Assume single-threaded or careful usage
 void timerCallback(void *arg)
 {
-    renderFrame(); // Call renderFrame without parameters
+    timer_callback_data_t *cb_data = (timer_callback_data_t *)arg;
+    renderFrame(cb_data->isr_trigger_number);
 }
 
-void setTimer(delta_t delayMicros)
+void setTimer(delta_t delayMicros, uint32_t isr_trigger_number)
 {
+    cb_data.isr_trigger_number = isr_trigger_number; // Store for later retrieval
+
     if (timer_handle == nullptr)
     {
-        const esp_timer_create_args_t timer_args = {.callback = timerCallback, .name = "frame-timer"};
+        const esp_timer_create_args_t timer_args = {.callback = timerCallback,
+                                                    .arg = &cb_data, // Pass the struct as argument
+                                                    .name = "frame-timer"};
         esp_timer_create(&timer_args, &timer_handle);
     }
     esp_timer_start_once(timer_handle, delayMicros);
 }
 
-void renderFrame()
+
+void renderFrame(uint32_t isr_trigger_number)
 {
     if (currentFrame >= numOfFrames)
     {
         currentFrame = 0; // Reset frame counter for the next rotation
         return;           // Stop the rendering chain
     }
+#ifdef FILEMON
+    frameProfile fp = {};
+    fp.frame_begin_timestamp = esp_timer_get_time();
+    fp.isr_trigger_number = isr_trigger_number;
+    fp.frame_number = currentFrame;
+#endif
 
     // Render the arms for the current frame
     renderer->renderFrame(currentFrame);
-
+#ifdef FILEMON
+    fp.frame_render_done_timestamp = esp_timer_get_time();
+#endif
     FastLED.show();
 
     // Prepare for the next frame
     currentFrame++;
-
+#ifdef FILEMON
+    fp.frame_end_timestamp = esp_timer_get_time();
+    _fp->logFrameProfile(fp);
+#endif
     // Set the timer for the next frame immediately
-    setTimer(nextCallbackMicros); // This needs to be calculated beforehand
+    setTimer(nextCallbackMicros, isr_trigger_number); // This needs to be calculated beforehand
 }
 
 delta_t adjustRotationInterval(delta_t rotationInterval)
@@ -122,7 +147,7 @@ void ledRenderTask(void *pvParameters)
             data.rotation_begin_timestamp = esp_timer_get_time();
 #endif
             // Start rendering the first frame immediately, subsequent frames are timed
-            renderFrame();
+            renderFrame(data.isr_trigger_number);
 #ifdef FILEMON
             data.rotation_end_timestamp = esp_timer_get_time();
             _rp->logRotationProfile(data);
@@ -170,6 +195,10 @@ void setup()
     _rp = new RotationProfiler("/rp.bin");
     _rp->dumpToSerial(true);
     _rp->start();
+    Serial.println("FrameProfile");
+    _fp = new FrameProfiler("fp.bin");
+    _fp->dumpToSerial(true);
+    _fp->start();
     Serial.println("All done with D&E");
 
 #endif

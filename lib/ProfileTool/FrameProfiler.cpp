@@ -34,13 +34,14 @@ void FrameProfiler::printProfile(const void *profileData)
     const frameProfile *profile = static_cast<const frameProfile *>(profileData);
 
     // Assuming profileData is already a decoded frameProfile object
-    Serial.printf("%u,%llu,%llu,%u\n", profile->isr_trigger_number, profile->frame_begin_timestamp,
-                  profile->frame_end_timestamp, profile->frame_number);
+    Serial.printf("%u,%llu,%llu,%llu,%u\n", profile->isr_trigger_number, profile->frame_begin_timestamp,
+                  profile->frame_render_done_timestamp, profile->frame_end_timestamp, profile->frame_number);
 }
 
 void FrameProfiler::printProfileHeader()
 {
-    Serial.println("isr_trigger_number,frame_begin_timestamp,frame_end_timestamp,frame_number");
+    Serial.println(
+        "isr_trigger_number,frame_begin_timestamp,frame_render_done_timestamp,frame_end_timestamp,frame_number");
 }
 
 bool FrameProfiler::logFrameProfile(const frameProfile &profile)

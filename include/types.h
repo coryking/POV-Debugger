@@ -5,23 +5,6 @@
 typedef uint64_t delta_t;
 typedef uint64_t timestamp_t;
 
-// Enum for trigger states
-typedef enum : uint32_t
-{
-    FALSE = 0,
-    FALL = 1,
-    RISE = 2
-} TriggerState;
-
-struct ISRData
-{
-    uint64_t timestamp;
-    int state;
-    u32_t isrCallCount;
-    timestamp_t renderStart;
-    timestamp_t renderEnd;
-};
-
 namespace RTOS
 {
 

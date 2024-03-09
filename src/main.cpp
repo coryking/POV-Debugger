@@ -15,7 +15,7 @@
 #include <string.h>
 #include <vector>
 #include "Renderers.h"
-
+#include "RotationProfiler.h"
 /// Total number of ISR calls...
 volatile uint32_t IRAM_ATTR total_isr = 0;
 
@@ -23,9 +23,7 @@ QueueHandle_t triggerQueue;
 TaskHandle_t ledRenderTask_h;
 
 #ifdef FILEMON
-#include <FS.h>
-#include <SPIFFS.h>
-TaskHandle_t _fileTask;
+RotationProfiler *_rp;
 #endif
 
 // ISR Handler
@@ -38,7 +36,10 @@ static void IRAM_ATTR hallEffectISR(void *arg)
 
     auto gpioState = gpio_get_level(HALL_PIN);
     timestamp_t lastTriggerTime = esp_timer_get_time();
-    ISRData data = {lastTriggerTime, gpioState, ++total_isr};
+    RotationProfile data = {}; // Zero-initialize all fields
+    data.isr_timestamp = lastTriggerTime;
+    data.isr_trigger_number = ++total_isr;
+
     xQueueSendFromISR(triggerQueue, &data, &xHigherPriorityTaskWoken);
     /* Now the buffer is empty we can switch context if necessary. */
     if (xHigherPriorityTaskWoken)
@@ -103,87 +104,32 @@ delta_t adjustRotationInterval(delta_t rotationInterval)
 void ledRenderTask(void *pvParameters)
 {
     timestamp_t lastTimestamp = esp_timer_get_time();
-    ISRData isrData;
+    RotationProfile data;
     Serial.println("Here we are");
 
     while (true)
     {
-        if (xQueueReceive(triggerQueue, &isrData, portMAX_DELAY) == pdPASS)
+        if (xQueueReceive(triggerQueue, &data, portMAX_DELAY) == pdPASS)
         {
 
             // Calculate the rotation interval and divide by numOfFrames for frame timing
-            delta_t rotationInterval = isrData.timestamp - lastTimestamp;
+            delta_t rotationInterval = data.isr_timestamp - lastTimestamp;
             rotationInterval = adjustRotationInterval(rotationInterval);
             nextCallbackMicros = rotationInterval / numOfFrames;
-            lastTimestamp = isrData.timestamp;
+            lastTimestamp = data.isr_timestamp;
 
 #ifdef FILEMON
-            isrData.renderStart = esp_timer_get_time();
+            data.rotation_begin_timestamp = esp_timer_get_time();
 #endif
             // Start rendering the first frame immediately, subsequent frames are timed
             renderFrame();
 #ifdef FILEMON
-            isrData.renderEnd = esp_timer_get_time();
-            xQueueSend(triggerQueue, &isrData, 0);
+            data.rotation_end_timestamp = esp_timer_get_time();
+            _rp->logRotationProfile(data);
 #endif
         }
     }
 }
-#ifdef FILEMON
-void writeIsrEvt(File *file, ISRData isrData)
-{
-    file->printf("%lu,%llu,%llu,%llu,%d\n", isrData.isrCallCount, isrData.timestamp, isrData.renderStart,
-                 isrData.renderEnd, isrData.state);
-}
-
-void fileMonitorTask(void *pvParameters)
-{
-    File file = SPIFFS.open("/data.csv", FILE_APPEND);
-    file.println("isrCallCount,isrTimestamp,renderStartTimestamp,renderEndTimestamp,pinState");
-    ISRData isrData;
-    while (true)
-    {
-        if (xQueueReceive(triggerQueue, &isrData, portMAX_DELAY) == pdPASS)
-        {
-
-            writeIsrEvt(&file, isrData);
-        }
-    }
-    file.close();
-}
-
-void dumpAndEraseData()
-{
-
-    // Initialize LittleFS /
-
-    if (!SPIFFS.begin(false))
-    {
-        Serial.println("An Error has occurred while mounting LittleFS");
-        return;
-    }
-
-    File file = SPIFFS.open("/data.csv", FILE_READ);
-
-    // File file = LittleFS.open("/data.csv");
-    if (!file)
-    {
-        Serial.println("Failed to open file for reading");
-        return;
-    }
-
-    while (file.available())
-    {
-        String line = file.readStringUntil('\n');
-        Serial.println(line);
-    }
-    file.close();
-
-    // Erase the data by simply removing the file
-    SPIFFS.remove("/data.csv");
-}
-
-#endif
 
 void setupInterrupt()
 {
@@ -216,14 +162,14 @@ void setup()
 {
     Serial.begin(BAUD_RATE);
     delay(4000); // give us time to plug in monitoring
-    triggerQueue = xQueueCreate(40, sizeof(ISRData));
+    triggerQueue = xQueueCreate(40, sizeof(RotationProfile));
     renderer = new DotArmRenderer<NUM_LEDS, NUM_ARMS>(numOfFrames, armMap);
     renderer->start();
 #ifdef FILEMON
     Serial.println("Dump & Erase...");
-    dumpAndEraseData();
+    _rp = new RotationProfiler("/rp.bin");
     Serial.println("All done with D&E");
-    xTaskCreate(&fileMonitorTask, "FileWriter", RTOS::LARGE_STACK_SIZE, nullptr, RTOS::HIGH_PRIORITY, &_fileTask);
+
 #endif
     setupRenderTask();
     Serial.println("Task created");

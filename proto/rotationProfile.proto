@@ -1,0 +1,8 @@
+syntax = "proto3";
+
+message RotationProfile {
+    uint64 isr_timestamp = 1;
+    uint64 rotation_begin_timestamp = 2;
+    uint64 rotation_end_timestamp = 3;
+    uint32 isr_trigger_number = 4;
+}

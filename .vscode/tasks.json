@@ -1,0 +1,17 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Generate Protobuf C Code",
+            "type": "shell",
+            "command": "/opt/homebrew/bin/protoc",
+            "args": [
+                "--plugin=protoc-gen-nanopb=/opt/homebrew/bin/protoc-gen-nanopb",
+                "--nanopb_out=${workspaceFolder}/lib",
+                "${workspaceFolder}/proto/*.proto"
+            ],
+            "group": "build",
+            "problemMatcher": []
+        }
+    ]
+}

@@ -3,74 +3,48 @@
 #include "pb_decode.h"
 #include <SPIFFS.h>
 
-RotationProfiler::RotationProfiler(const std::string &filename) : _filename(filename)
+RotationProfiler::RotationProfiler(const std::string &filename) : BaseProfiler(filename, sizeof(RotationProfile))
 {
-    _queueHandle = xQueueCreate(10, sizeof(RotationProfile)); // Adjust size as needed
-    if (_queueHandle == nullptr)
+}
+
+void RotationProfiler::serializeProfile(File &file, const void *profileData)
+{
+    // Serialize and write to file
+    uint8_t buffer[RotationProfile_size]; // Ensure buffer is large enough for your message
+    pb_ostream_t stream = pb_ostream_from_buffer(buffer, sizeof(buffer));
+    if (pb_encode(&stream, RotationProfile_fields, &profileData))
     {
-        Serial.println("Failed to create queue");
-        // Handle error
+        file.write(buffer, stream.bytes_written);
+    }
+    else
+    {
+        Serial.println("Encoding failed");
     }
 }
 
-RotationProfiler::~RotationProfiler()
+bool RotationProfiler::deserializeProfile(File &file, void *profileData)
 {
-    if (_queueHandle != nullptr)
-    {
-        vQueueDelete(_queueHandle);
-    }
+    uint8_t buffer[RotationProfile_size];
+    size_t messageLength = file.readBytes((char *)buffer, sizeof(buffer));
+    pb_istream_t stream = pb_istream_from_buffer(buffer, messageLength);
+    return pb_decode(&stream, RotationProfile_fields, static_cast<RotationProfile *>(profileData));
 }
 
-void RotationProfiler::start()
+void RotationProfiler::printProfile(const void *profileData)
 {
-    xTaskCreate(fileMonitorTask, "FileMonitorTask", 2048, this, 1, &_fileTaskHandle);
+    const RotationProfile *profile = static_cast<const RotationProfile *>(profileData);
+
+    // Assuming profileData is already a decoded frameProfile object
+    Serial.printf("%llu,%llu,%llu,%u\n", profile->isr_timestamp, profile->rotation_begin_timestamp,
+                  profile->rotation_end_timestamp, profile->isr_trigger_number);
 }
 
-void RotationProfiler::logRotationProfile(const RotationProfile &profile)
+void RotationProfiler::printProfileHeader()
 {
-    if (xQueueSend(_queueHandle, &profile, portMAX_DELAY) != pdPASS)
-    {
-        Serial.println("Failed to send profile to queue");
-        // Handle error
-    }
+    Serial.println("isr_timestamp,rotation_begin_timestamp,rotation_end_timestamp,isr_trigger_number");
 }
 
-void RotationProfiler::fileMonitorTask(void *pvParameters)
+bool RotationProfiler::logRotationProfile(const RotationProfile &profile)
 {
-    auto *instance = static_cast<RotationProfiler *>(pvParameters);
-    SPIFFS.begin(true);
-    File file = SPIFFS.open(instance->_filename.c_str(), FILE_APPEND);
-    if (!file)
-    {
-        Serial.println("Failed to open file for writing");
-        vTaskDelete(nullptr); // End task
-    }
-
-    RotationProfile profile;
-    while (true)
-    {
-        if (xQueueReceive(instance->_queueHandle, &profile, portMAX_DELAY) == pdPASS)
-        {
-            // Serialize and write to file
-            uint8_t buffer[RotationProfile_size]; // Ensure buffer is large enough for your message
-            pb_ostream_t stream = pb_ostream_from_buffer(buffer, sizeof(buffer));
-            if (pb_encode(&stream, RotationProfile_fields, &profile))
-            {
-                file.write(buffer, stream.bytes_written);
-            }
-            else
-            {
-                Serial.println("Encoding failed");
-                // Handle error
-            }
-        }
-    }
-    file.close();
-    vTaskDelete(nullptr); // End task if loop exits
-}
-
-void RotationProfiler::dumpToSerial(bool delWhenDone)
-{
-    // Implementation of dumping file contents to serial
-    // This is an exercise left to the reader
+    return logProfileData(&profile);
 }

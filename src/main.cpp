@@ -168,6 +168,8 @@ void setup()
 #ifdef FILEMON
     Serial.println("Dump & Erase...");
     _rp = new RotationProfiler("/rp.bin");
+    _rp->dumpToSerial(true);
+    _rp->start();
     Serial.println("All done with D&E");
 
 #endif

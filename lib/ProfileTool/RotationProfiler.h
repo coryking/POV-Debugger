@@ -9,22 +9,19 @@
 #include <SPIFFS.h>
 #include <string>
 
+#include "BaseProfiler.h"
 #include "rotationProfile.pb.h" // Include the protobuf-generated header
 
-class RotationProfiler
+class RotationProfiler : public BaseProfiler
 {
   public:
     RotationProfiler(const std::string &filename);
-    ~RotationProfiler();
-    void start();
-    void logRotationProfile(const RotationProfile &profile);
-    void dumpToSerial(bool delWhenDone = true);
+    bool logRotationProfile(const RotationProfile &profile);
 
-  private:
-    static void fileMonitorTask(void *pvParameters);
-    std::string _filename;
-    TaskHandle_t _fileTaskHandle = nullptr;
-    QueueHandle_t _queueHandle = nullptr;
+  protected:
+    void serializeProfile(File &file, const void *profileData) override;
+    bool deserializeProfile(File &file, void *profileData) override;
+    void printProfile(const void *profileData) override;
+    void printProfileHeader() override;
 };
-
 #endif // ROTATIONPROFILER_H
